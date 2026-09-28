@@ -1,6 +1,9 @@
 import { Platform } from 'react-native';
 import { CachesDirectoryPath, writeFile } from '@dr.pogodin/react-native-fs';
-import { CameraRoll } from '@react-native-camera-roll/camera-roll';
+import {
+  CameraRoll,
+  iosRequestReadWriteGalleryPermission,
+} from '@react-native-camera-roll/camera-roll';
 import Clipboard from '@react-native-clipboard/clipboard';
 import Share, { Social } from 'react-native-share';
 import { ImageFormat, type SkImage } from '@shopify/react-native-skia';
@@ -15,6 +18,17 @@ export async function writeJpeg(image: SkImage): Promise<string> {
 }
 
 export async function saveToGallery(path: string) {
+  // On iOS, camera-roll saves with "add only" access and then reads the new
+  // asset back; add-only can't read, so it rejects with no message even though
+  // the photo was saved. Asking for read/write first makes the read-back work.
+  if (Platform.OS === 'ios') {
+    const status = await iosRequestReadWriteGalleryPermission();
+    if (status !== 'granted' && status !== 'limited') {
+      throw new Error(
+        'Photos access is off. Turn it on in Settings › MoreIdea › Photos.',
+      );
+    }
+  }
   await CameraRoll.saveAsset(`file://${path}`, { type: 'photo' });
 }
 
