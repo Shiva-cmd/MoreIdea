@@ -1,97 +1,32 @@
-This is a new [**React Native**](https://reactnative.dev) project, bootstrapped using [`@react-native-community/cli`](https://github.com/react-native-community/cli).
+# MoreIdea: image + caption → Instagram
 
-# Getting Started
+A single React Native screen (RN 0.87, tested on Android 17). The shop owner picks a photo from the gallery or camera and places the caption on it. The app renders the finished post **on the device at full resolution** and hands it to Instagram.
 
-> **Note**: Make sure you have completed the [Set Up Your Environment](https://reactnative.dev/docs/set-up-your-environment) guide before proceeding.
+`npm install && npx react-native run-android`. Code: `src/layout.ts` (text-fitting rules), `src/Post.tsx` (the drawing), `src/PostComposer.tsx` (the screen), `src/exportPost.ts` (file, gallery, Instagram).
 
-## Step 1: Start Metro
+## Posting to Instagram from a mobile app: what I found
 
-First, you will need to run **Metro**, the JavaScript build tool for React Native.
+- **Auto-publishing is not possible from the device alone.** Instagram's only publishing API is the Graph API Content Publishing endpoint. It works **only for Business/Creator accounts linked to a Facebook Page**, needs a Meta app with `instagram_content_publish` approved in App Review, and takes the image as a **public HTTPS URL** that Meta fetches. So "post for me" requires: the owner converting to a professional account, an OAuth login, our own server/CDN to host the JPEG, and Meta's review. Personal accounts can't be published to at all. None of that fits "no login, one screen, composed on device".
+- **What is possible:** handing the file to the Instagram app. On Android that is an `ACTION_SEND` intent targeted at `com.instagram.android`, which opens Instagram's own Feed / Story / Message picker with our image. On iOS the closest equivalents are the system share sheet, or `instagram-stories://share` for Stories (which now requires a Facebook App ID).
+- **Instagram ignores any caption passed in a share intent** (it has for years). So the caption can't be pre-filled.
+- **What I built:** "Post to Instagram" copies the caption to the clipboard, then opens Instagram directly with the image (checked via `<queries>` package visibility). The owner taps Next and long-presses to paste the caption. If Instagram isn't installed, it falls back to the system share sheet. "Save to gallery" is also there, since that's where owners often go first.
 
-To start the Metro dev server, run the following command from the root of your React Native project:
+## How the flattened, full-resolution image is made
 
-```sh
-# Using npm
-npm start
+The post is drawn with **@shopify/react-native-skia**. One component (`Post.tsx`) draws the photo, the text band and the text in **output-pixel coordinates**. The on-screen preview renders that component scaled down inside a `<Canvas>`. Export renders the *same* component offscreen with `drawAsImage()` at the full output size and encodes it as JPEG (quality 95). So the preview and the file can't drift apart, and the export is never a screenshot of the phone-sized view (which is what `react-native-view-shot` would give you).
 
-# OR using Yarn
-yarn start
-```
+- **Size:** the photo is centre-cropped to 1:1 or 4:5 (the shapes Instagram shows in the feed) at the source's native resolution. It is never upscaled, and capped at 4096 px on the longest side (the GPU texture limit). A 2000×1500 photo exports as 1500×1500. The app warns when the source is below 1080 px.
+- **Hindi and emoji:** Noto Sans, Noto Sans Devanagari and Noto Color Emoji are bundled and given to Skia's Paragraph API as a font fallback chain. HarfBuzz shaping in Skia handles conjuncts and matras (ों, ज़्), so rendering doesn't depend on which fonts the phone has.
+- **What the owner controls and can't break:** shape, text position (top/middle/bottom), size (S/M/L) and three colour styles. The text always sits on a contrasting band inside safe margins, so it can't be dragged off the image, made unreadable, or put in a clashing colour.
+- **Long captions:** the text first shrinks step by step down to a minimum readable size. The text is also capped at ~40% of the photo's height. If it still doesn't fit, it's cut at the last whole line with "…" and a warning explains that the full text still goes in the Instagram caption (via the clipboard).
 
-## Step 2: Build and run your app
+**What I gave up:** Skia adds several MB of native code per ABI, plus ~3.9 MB of bundled fonts. The layout is preset-based rather than free-form (no dragging, no per-word styling). JPEG instead of PNG (much smaller, and Instagram re-encodes anyway). And rendering goes through the GPU, which is where the 4096 px cap comes from.
 
-With Metro running, open a new terminal window/pane from the root of your React Native project, and use one of the following commands to build and run your Android or iOS app:
+## With two weeks instead of an afternoon
 
-### Android
-
-```sh
-# Using npm
-npm run android
-
-# OR using Yarn
-yarn android
-```
-
-### iOS
-
-For iOS, remember to install CocoaPods dependencies (this only needs to be run on first clone or after updating native deps).
-
-The first time you create a new project, run the Ruby bundler to install CocoaPods itself:
-
-```sh
-bundle install
-```
-
-Then, and every time you update your native dependencies, run:
-
-```sh
-bundle exec pod install
-```
-
-For more information, please visit [CocoaPods Getting Started guide](https://guides.cocoapods.org/using/getting-started.html).
-
-```sh
-# Using npm
-npm run ios
-
-# OR using Yarn
-yarn ios
-```
-
-If everything is set up correctly, you should see your new app running in the Android Emulator, iOS Simulator, or your connected device.
-
-This is one way to run your app — you can also build it directly from Android Studio or Xcode.
-
-## Step 3: Modify your app
-
-Now that you have successfully run the app, let's make changes!
-
-Open `App.tsx` in your text editor of choice and make some changes. When you save, your app will automatically update and reflect these changes — this is powered by [Fast Refresh](https://reactnative.dev/docs/fast-refresh).
-
-When you want to forcefully reload, for example to reset the state of your app, you can perform a full reload:
-
-- **Android**: Press the <kbd>R</kbd> key twice or select **"Reload"** from the **Dev Menu**, accessed via <kbd>Ctrl</kbd> + <kbd>M</kbd> (Windows/Linux) or <kbd>Cmd ⌘</kbd> + <kbd>M</kbd> (macOS).
-- **iOS**: Press <kbd>R</kbd> in iOS Simulator.
-
-## Congratulations! :tada:
-
-You've successfully run and modified your React Native App. :partying_face:
-
-### Now what?
-
-- If you want to add this new React Native code to an existing application, check out the [Integration guide](https://reactnative.dev/docs/integration-with-existing-apps).
-- If you're curious to learn more about React Native, check out the [docs](https://reactnative.dev/docs/getting-started).
-
-# Troubleshooting
-
-If you're having issues getting the above steps to work, see the [Troubleshooting](https://reactnative.dev/docs/troubleshooting) page.
-
-# Learn More
-
-To learn more about React Native, take a look at the following resources:
-
-- [React Native Website](https://reactnative.dev) - learn more about React Native.
-- [Getting Started](https://reactnative.dev/docs/environment-setup) - an **overview** of React Native and how setup your environment.
-- [Learn the Basics](https://reactnative.dev/docs/getting-started) - a **guided tour** of the React Native **basics**.
-- [Blog](https://reactnative.dev/blog) - read the latest official React Native **Blog** posts.
-- [`@facebook/react-native`](https://github.com/facebook/react-native) - the Open Source; GitHub **repository** for React Native.
+- Talk to 5 shop owners first. Watch whether they want *more* control (drag, pinch) or *less* (one "make it look good" button).
+- Real Instagram publishing for owners who have (or can be walked into) a Business account: Meta login, a small upload service with signed URLs, a scheduled-post queue, and App Review.
+- iOS polish: Stories via `instagram-stories://` with the image and brand colours, and saving to Photos with the proper permission flow.
+- Smarter layout: detect faces and busy areas to auto-place text; brand colour picked from the shop's logo; auto-split long captions into a carousel.
+- Font and size budget: subset Noto to the Devanagari + Latin + emoji ranges actually used; per-ABI APK splits.
+- Tests around the layout rules (fit/shrink/truncate across scripts), plus visual regression tests on the exported JPEG.
