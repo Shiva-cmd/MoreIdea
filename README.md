@@ -1,32 +1,33 @@
 # MoreIdea: image + caption → Instagram
 
-A single React Native screen (RN 0.87, tested on Android 17). The shop owner picks a photo from the gallery or camera and places the caption on it. The app renders the finished post **on the device at full resolution** and hands it to Instagram.
+One React Native screen (RN 0.87, tested on an Android 17 emulator and an iOS 26 simulator). The owner picks a photo (gallery or camera) and places the caption on it. The app renders the post **on the device at full resolution** and hands it to Instagram.
 
-`npm install && npx react-native run-android`. Code: `src/layout.ts` (text-fitting rules), `src/Post.tsx` (the drawing), `src/PostComposer.tsx` (the screen), `src/exportPost.ts` (file, gallery, Instagram).
+Run: `npm install`, then `npx react-native run-android`, or `cd ios && pod install && cd .. && npx react-native run-ios`.
+Code: `src/layout.ts` (text rules), `src/Post.tsx` (drawing), `src/PostComposer.tsx` (screen), `src/exportPost.ts` (save/share).
 
-## Posting to Instagram from a mobile app: what I found
+## Posting to Instagram: what I found
 
-- **Auto-publishing is not possible from the device alone.** Instagram's only publishing API is the Graph API Content Publishing endpoint. It works **only for Business/Creator accounts linked to a Facebook Page**, needs a Meta app with `instagram_content_publish` approved in App Review, and takes the image as a **public HTTPS URL** that Meta fetches. So "post for me" requires: the owner converting to a professional account, an OAuth login, our own server/CDN to host the JPEG, and Meta's review. Personal accounts can't be published to at all. None of that fits "no login, one screen, composed on device".
-- **What is possible:** handing the file to the Instagram app. On Android that is an `ACTION_SEND` intent targeted at `com.instagram.android`, which opens Instagram's own Feed / Story / Message picker with our image. On iOS the closest equivalents are the system share sheet, or `instagram-stories://share` for Stories (which now requires a Facebook App ID).
-- **Instagram ignores any caption passed in a share intent** (it has for years). So the caption can't be pre-filled.
-- **What I built:** "Post to Instagram" copies the caption to the clipboard, then opens Instagram directly with the image (checked via `<queries>` package visibility). The owner taps Next and long-presses to paste the caption. If Instagram isn't installed, it falls back to the system share sheet. "Save to gallery" is also there, since that's where owners often go first.
+- **Auto-posting from the device isn't possible.** The only publishing API (Graph API) needs a Business/Creator account linked to a Facebook Page, a Meta app approved in App Review, an OAuth login, and the image at a **public URL** (so a server). Personal accounts can't be published to at all.
+- **What works:** handing the file to the Instagram app. On Android that's a share intent aimed at `com.instagram.android`, which opens Instagram's Feed/Story/Message picker. On iOS it's the share sheet (Stories via `instagram-stories://` needs a Facebook App ID).
+- **Instagram ignores captions passed in a share**, so they can't be pre-filled.
+- **What I built:** "Post to Instagram" copies the caption, then opens Instagram with the image; the owner pastes and posts. If Instagram isn't installed, the system share sheet opens. "Save to gallery" is there too.
 
-## How the flattened, full-resolution image is made
+## How the full-resolution image is made
 
-The post is drawn with **@shopify/react-native-skia**. One component (`Post.tsx`) draws the photo, the text band and the text in **output-pixel coordinates**. The on-screen preview renders that component scaled down inside a `<Canvas>`. Export renders the *same* component offscreen with `drawAsImage()` at the full output size and encodes it as JPEG (quality 95). So the preview and the file can't drift apart, and the export is never a screenshot of the phone-sized view (which is what `react-native-view-shot` would give you).
+**@shopify/react-native-skia** draws the post in output pixels in one component. The preview shows it scaled down, and the export renders the *same* component offscreen with `drawAsImage()` and saves a JPEG (quality 95). So preview and file always match, and the export is never a screenshot of the phone-sized view (which `react-native-view-shot` would give).
 
-- **Size:** the photo is centre-cropped to 1:1 or 4:5 (the shapes Instagram shows in the feed) at the source's native resolution. It is never upscaled, and capped at 4096 px on the longest side (the GPU texture limit). A 2000×1500 photo exports as 1500×1500. The app warns when the source is below 1080 px.
-- **Hindi and emoji:** Noto Sans, Noto Sans Devanagari and Noto Color Emoji are bundled and given to Skia's Paragraph API as a font fallback chain. HarfBuzz shaping in Skia handles conjuncts and matras (ों, ज़्), so rendering doesn't depend on which fonts the phone has.
-- **What the owner controls and can't break:** they **drag** the text anywhere with one finger, **pinch** to resize and **twist** to rotate it with two (rotation snaps level within 5° of 0/90/180/270°, and a Straighten button resets it), or tap presets (top/middle/bottom, S/M/L). They also pick the shape and one of three colour styles. Limits keep it safe: the band hugs the text and is clamped inside safe margins, so it can't go off the image. Size is clamped between a readable minimum and a maximum. The text always sits on a contrasting band, so it can't become unreadable or clash. Gestures use **react-native-gesture-handler v3** (`usePanGesture` + `usePinchGesture` + `useRotationGesture`, composed with `useSimultaneousGestures`) and its `ScrollView`, so native gesture arbitration decides between moving the text and scrolling the page.
-- **Long captions:** the text first shrinks step by step down to a minimum readable size. The text is also capped at ~40% of the photo's height. If it still doesn't fit, it's cut at the last whole line with "…" and a warning explains that the full text still goes in the Instagram caption (via the clipboard).
+- **Size:** centre-cropped to 1:1 or 4:5 at the photo's native resolution, never upscaled, capped at 4096 px. The app warns below 1080 px.
+- **Hindi and emoji:** bundled Noto Sans + Noto Sans Devanagari, shaped by Skia, so matras and conjuncts (ों, ज़्) render on any phone. iOS can't draw the bundled COLRv1 emoji font, so emoji use Apple Color Emoji there.
+- **Owner controls:** drag, pinch and twist the text (react-native-gesture-handler v3), or tap presets for position and size; also shape and three colour styles. Guard rails: the text stays inside safe margins (even when rotated), size stays between readable limits, rotation snaps level within 5°, and the text always sits on a contrasting band.
+- **Long captions:** shrink to a minimum readable size; if still too tall (max ~40% of the photo), cut at a whole line with "…" plus a warning. The full text still goes in the Instagram caption.
+- **Empty caption:** no text and no band, just the photo.
 
-**What I gave up:** Skia adds several MB of native code per ABI, plus ~3.9 MB of bundled fonts. Gesture callbacks run on the JS thread (`runOnJS`) and update React state, which re-lays out the Skia paragraph. That's smooth enough here, but not UI-thread smooth like Reanimated shared values would be. There's also no per-word styling. JPEG instead of PNG (much smaller, and Instagram re-encodes anyway). And rendering goes through the GPU, which is where the 4096 px cap comes from.
+**What I gave up:** app size (Skia's native code + ~3.9 MB of fonts); gestures update React state on the JS thread, fine here but not UI-thread smooth; JPEG instead of PNG (much smaller, and Instagram re-encodes anyway).
 
 ## With two weeks instead of an afternoon
 
-- Talk to 5 shop owners first. Watch whether drag and pinch help them, or whether they'd rather have *less* control (one "make it look good" button). Drive the gestures with Reanimated shared values, so dragging runs on the UI thread.
-- Real Instagram publishing for owners who have (or can be walked into) a Business account: Meta login, a small upload service with signed URLs, a scheduled-post queue, and App Review.
-- iOS polish: Stories via `instagram-stories://` with the image and brand colours, and saving to Photos with the proper permission flow.
-- Smarter layout: detect faces and busy areas to auto-place text; brand colour picked from the shop's logo; auto-split long captions into a carousel.
-- Font and size budget: subset Noto to the Devanagari + Latin + emoji ranges actually used; per-ABI APK splits.
-- Tests around the layout rules (fit/shrink/truncate across scripts), plus visual regression tests on the exported JPEG.
+- Watch 5 shop owners use it: do gestures help, or would one "make it look good" button be better?
+- Real publishing for Business accounts: Meta login, upload service, scheduled posts, App Review.
+- Gestures on the UI thread with Reanimated; iOS Stories sharing; add-only Photos permission.
+- Smarter layout: auto-place text away from faces and busy areas; brand colours from the logo.
+- Smaller app: subset the fonts, per-ABI builds. Tests for the fit/shrink/cut rules and the exported image.

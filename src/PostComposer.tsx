@@ -126,6 +126,9 @@ export function PostComposer() {
     [image, aspect],
   );
 
+  // An empty caption posts just the photo: no text and no empty band.
+  const hasText = caption.trim().length > 0;
+
   // Shaping only reruns when the text or size changes; dragging only re-places.
   const block = useMemo(() => {
     if (!out || !fonts) {
@@ -270,6 +273,7 @@ export function PostComposer() {
         height={out.height}
         layout={layout}
         theme={theme}
+        showText={hasText}
       />,
       out,
     );
@@ -333,6 +337,7 @@ export function PostComposer() {
                   height={out.height}
                   layout={layout}
                   theme={theme}
+                  showText={hasText}
                 />
               </Group>
             </Canvas>
