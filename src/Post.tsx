@@ -4,6 +4,7 @@ import {
   Image,
   Paragraph,
   RoundedRect,
+  vec,
   type SkImage,
 } from '@shopify/react-native-skia';
 import { THEMES, type TextLayout, type ThemeId } from './layout';
@@ -33,20 +34,24 @@ export function Post({ image, width, height, layout, theme }: Props) {
         height={height}
         fit="cover"
       />
-      <RoundedRect
-        x={band.x}
-        y={band.y}
-        width={band.width}
-        height={band.height}
-        r={band.r}
-        color={THEMES[theme].band}
-      />
-      <Paragraph
-        paragraph={layout.paragraph}
-        x={layout.textX}
-        y={layout.textY}
-        width={layout.textWidth}
-      />
+      <Group
+        origin={vec(band.x + band.width / 2, band.y + band.height / 2)}
+        transform={[{ rotate: layout.rotation }]}>
+        <RoundedRect
+          x={band.x}
+          y={band.y}
+          width={band.width}
+          height={band.height}
+          r={band.r}
+          color={THEMES[theme].band}
+        />
+        <Paragraph
+          paragraph={layout.paragraph}
+          x={layout.textX}
+          y={layout.textY}
+          width={layout.textWidth}
+        />
+      </Group>
     </Group>
   );
 }
